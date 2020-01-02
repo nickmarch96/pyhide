@@ -25,8 +25,8 @@ import getpass
 data = {}
 filename = {}
 
-iv = base64.b64decode({})
-salt = base64.b64decode({})
+iv = base64.b85decode({})
+salt = base64.b85decode({})
 itr_len = {}
 
 password = getpass.getpass("Input password: ")
@@ -34,10 +34,10 @@ key = PBKDF2(password, salt, AES.block_size, itr_len, None)
 del password
 aes = AES.new(key, AES.MODE_CBC, iv)
 
-raw = aes.decrypt(base64.b64decode(data))
+raw = aes.decrypt(base64.b85decode(data))
 raw = raw[:-raw[-1]]
 
-fname = aes.decrypt(base64.b64decode(filename))
+fname = aes.decrypt(base64.b85decode(filename))
 fname = fname[:-fname[-1]]
 
 if not fname:
@@ -73,7 +73,7 @@ class PyHide():
 
 
 
-	def create(self, file):
+	def create(self, file, filename_override=None):
 		if os.path.exists(file):
 			pass
 		else:
@@ -83,13 +83,17 @@ class PyHide():
 			data = f.read()
 
 		data = self._pad(data)
-		data = base64.b64encode(self.aes.encrypt(data))
+		data = base64.b85encode(self.aes.encrypt(data))
 
+		if filename_override:
+			file = filename_override
+
+		file = os.path.basename(os.path.normpath(file))
 		file = self._pad(file.encode())
-		file = base64.b64encode(self.aes.encrypt(file))
+		file = base64.b85encode(self.aes.encrypt(file))
 
-		script = _TEMPLATE.format(data, file, base64.b64encode(self.__IV), 
-							base64.b64encode(self.__SALT), self.__ITR_LEN)
+		script = _TEMPLATE.format(data, file, base64.b85encode(self.__IV), 
+							base64.b85encode(self.__SALT), self.__ITR_LEN)
 
 		return script
 
@@ -104,8 +108,9 @@ if __name__ == "__main__":
 	group = parser.add_mutually_exclusive_group(required=True)
 	group.add_argument("-f", help="Filename of target.", dest="file")
 	group.add_argument("-d", help="Directory of target. (Will be compressed)", dest="directory")
-	parser.add_argument("-V", "--version", action="version", version="%(prog)s 2.0")
+	parser.add_argument("-V", "--version", action="version", version="%(prog)s 2.1")
 	parser.add_argument("-p", help="Password for AES encryption.", dest="pwd")
+	parser.add_argument("-o", help="Filename override (default is input filename)", dest="fname_override")
 	args = parser.parse_args()
 
 	file = None
@@ -130,6 +135,12 @@ if __name__ == "__main__":
 
 		file = args.file
 
+	if args.fname_override:
+		for letter in "/\\<>:\"|?*":
+			if letter in args.fname_override:
+				os.write(2, "Error:: Forbidden character '{}' in the filename override.\nIgnoring the override.\n".format(letter).encode())
+				args.fname_override = None
+				break
 	pwd = args.pwd
 	del args.pwd
 
@@ -145,7 +156,7 @@ if __name__ == "__main__":
 	e = PyHide(pwd)
 	del pwd
 
-	script = e.create(file)
+	script = e.create(file, args.fname_override)
 
 	if args.directory:
 		os.remove(file)
