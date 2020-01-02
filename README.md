@@ -6,7 +6,8 @@ A lightweight tool that creates one time files to send to people that are strong
 - PBKDF2 Key Derivation with randomized iterations
 - Automatically zips folders to send batches of files
 - Filenames are encrypted
-This tool encodes the encrypted binary data to inject into the templated python script. This obviously is not an efficent way to transmit data, however I use base 85 for a small size advantage over the standard base 64.
+- SHA512 checksum to verify authenticity of package
+This tool encodes the encrypted binary data to inject into the templated python script. This obviously is not an efficient way to transmit data, however I use base 85 for a small size advantage over the standard base 64.
 
 ## Dependencies 
 - Python 2.7 or greater

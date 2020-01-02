@@ -5,6 +5,7 @@ import os
 import random
 import argparse
 import shutil
+import hashlib
 
 try:
 	from Crypto.Cipher import AES
@@ -21,6 +22,7 @@ except ImportError:
 
 import base64
 import getpass
+import hashlib
 
 data = {}
 filename = {}
@@ -28,6 +30,9 @@ filename = {}
 iv = base64.b85decode({})
 salt = base64.b85decode({})
 itr_len = {}
+
+checksum = '{}'
+checksum_salt = {}
 
 password = getpass.getpass("Input password: ")
 key = PBKDF2(password, salt, AES.block_size, itr_len, None)
@@ -50,6 +55,11 @@ except:
 
 with open(fname, "wb") as o:
     o.write(raw)
+
+if hashlib.sha512(open(fname, "rb").read() + checksum_salt).hexdigest() == checksum:
+	print("Checksum is verified. File decrypted successfully!")
+else:
+	raise Exception("Checksums do NOT match! File failed to decrypt or was corrupted in transit.")
 """
 
 
@@ -62,6 +72,7 @@ class PyHide():
 	def __init__(self, password):
 		self.__IV = os.urandom(AES.block_size)
 		self.__SALT = os.urandom(AES.block_size)
+		self.__C_SALT = os.urandom(AES.block_size)
 		self.__ITR_LEN = random.randint(1000, 10000)
 		self.__KEY = PBKDF2(password, self.__SALT, AES.block_size, self.__ITR_LEN, None)
 		del password
@@ -71,8 +82,6 @@ class PyHide():
 		self.filename = None
 		self.data = None
 
-
-
 	def create(self, file, filename_override=None):
 		if os.path.exists(file):
 			pass
@@ -81,6 +90,8 @@ class PyHide():
 
 		with open(file, "rb") as f:
 			data = f.read()
+
+		checksum = hashlib.sha512(data + self.__C_SALT).hexdigest()
 
 		data = self._pad(data)
 		data = base64.b85encode(self.aes.encrypt(data))
@@ -93,7 +104,7 @@ class PyHide():
 		file = base64.b85encode(self.aes.encrypt(file))
 
 		script = _TEMPLATE.format(data, file, base64.b85encode(self.__IV), 
-							base64.b85encode(self.__SALT), self.__ITR_LEN)
+							base64.b85encode(self.__SALT), self.__ITR_LEN, checksum, self.__C_SALT)
 
 		return script
 
@@ -141,6 +152,7 @@ if __name__ == "__main__":
 				os.write(2, "Error:: Forbidden character '{}' in the filename override.\nIgnoring the override.\n".format(letter).encode())
 				args.fname_override = None
 				break
+
 	pwd = args.pwd
 	del args.pwd
 
