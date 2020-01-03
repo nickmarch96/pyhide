@@ -11,18 +11,24 @@ try:
 	from Crypto.Cipher import AES
 	from Crypto.Protocol.KDF import PBKDF2
 except ImportError:
-	raise Exception("The Crypto library is required to run this script. NIX: 'pip (or pip3) install pycrypto'. Windows: 'pip install pycryptodome'.")
+	os.write(2, "The Crypto library is required to run this script.\nNIX: 'pip (or pip3) install pycrypto'.\nWindows: 'pip install pycryptodome'.\n")
 
 _TEMPLATE = """#! /usr/bin/python3
+import os
 try:
 	from Crypto.Cipher import AES
 	from Crypto.Protocol.KDF import PBKDF2
 except ImportError:
-	raise Exception("The Crypto library is required to run this script. NIX: 'pip install pycrypto'. Windows: 'pip install pycryptodome'.")
+	print("The Crypto library is required to run this script. NIX: 'pip (or pip3) install pycrypto'. Windows: 'pip install pycryptodome'. ")
 
 import base64
 import getpass
 import hashlib
+import argparse
+
+parser = argparse.ArgumentParser(description="Standalone File Packager payload.")
+parser.add_argument("-p", help="Password for AES encryption.", dest="pwd")
+args = parser.parse_args()
 
 data = {}
 filename = {}
@@ -34,7 +40,13 @@ itr_len = {}
 checksum = '{}'
 checksum_salt = {}
 
-password = getpass.getpass("Input password: ")
+password = None
+
+if args.pwd:
+	password = args.pwd
+else:
+	password = getpass.getpass("Input password: ")
+
 key = PBKDF2(password, salt, AES.block_size, itr_len, None)
 del password
 aes = AES.new(key, AES.MODE_CBC, iv)
@@ -46,20 +58,21 @@ fname = aes.decrypt(base64.b85decode(filename))
 fname = fname[:-fname[-1]]
 
 if not fname:
-	raise Exception("File failed to decrypt.")
+	print("File failed to decrypt.")
 
 try:
 	fname = fname.decode()
 except:
-	raise Exception("File failed to decrypt.")
+	print("File failed to decrypt.")
+
+if hashlib.sha512(raw + checksum_salt).hexdigest() == checksum:
+	print("Checksum is verified. File decrypted successfully!")
+else:
+	print("Checksums do NOT match! File failed to decrypt or was corrupted in transit.")
+	exit()
 
 with open(fname, "wb") as o:
     o.write(raw)
-
-if hashlib.sha512(open(fname, "rb").read() + checksum_salt).hexdigest() == checksum:
-	print("Checksum is verified. File decrypted successfully!")
-else:
-	raise Exception("Checksums do NOT match! File failed to decrypt or was corrupted in transit.")
 """
 
 
@@ -86,7 +99,7 @@ class PyHide():
 		if os.path.exists(file):
 			pass
 		else:
-			raise Exception("{} does not exist!".format(file))
+			os.write(2, "{} does not exist!".format(file))
 
 		with open(file, "rb") as f:
 			data = f.read()
@@ -117,21 +130,24 @@ if __name__ == "__main__":
 
 	parser = argparse.ArgumentParser(description="Standalone File Packager with encryption.")
 	group = parser.add_mutually_exclusive_group(required=True)
-	group.add_argument("-f", help="Filename of target.", dest="file")
-	group.add_argument("-d", help="Directory of target. (Will be compressed)", dest="directory")
+	group.add_argument("-f", help="Filename of target", dest="file")
+	group.add_argument("-d", help="Directory of target (Will be compressed)", dest="directory")
 	parser.add_argument("-V", "--version", action="version", version="%(prog)s 2.1")
 	parser.add_argument("-p", help="Password for AES encryption.", dest="pwd")
-	parser.add_argument("-o", help="Filename override (default is input filename)", dest="fname_override")
+	parser.add_argument("-F", help="Filename override (default is input filename)", dest="fname_override")
+	parser.add_argument("-P", help="Payload name override", dest="payload_override")
 	args = parser.parse_args()
 
 	file = None
 
 	if args.directory:
 		if not os.path.exists(args.directory):
-			raise Exception("'{}' does not exist!".format(args.directory))
+			os.write(2, "'{}' does not exist!\n".format(args.directory).encode())
+			exit()
 
 		if not os.path.isdir(args.directory):
-			raise Exception("-d DIRECTORY argument was used but '{}' is not a directory.".format(args.directory))
+			os.write(2, "-d DIRECTORY argument was used but '{}' is not a directory.\nDid you mean -f FILE?\n".format(args.directory).encode())
+			exit()
 
 		file = os.path.basename(os.path.normpath(args.directory))
 		shutil.make_archive(file, "zip", args.directory)
@@ -139,10 +155,12 @@ if __name__ == "__main__":
 
 	if args.file:
 		if not os.path.exists(args.file):
-			raise Exception("'{}' does not exist!".format(args.file))
+			os.write(2, "'{}' does not exist!\n".format(args.file).encode())
+			exit()
 
 		if not os.path.isfile(args.file):
-			raise Exception("-f FILE argument was used but '{}' is not a file.".format(args.file))
+			os.write(2, "-f FILE argument was used but '{}' is not a file.\nDid you mean -d DIRECTORY?\n".format(args.file).encode())
+			exit()
 
 		file = args.file
 
@@ -161,7 +179,7 @@ if __name__ == "__main__":
 		pwd2 = getpass.getpass("Confirm password: ")
 
 		if pwd != pwd2:
-			raise Exception("Passwords do not match.")
+			os.write(2, "Passwords do not match.\n".encode())
 
 		del pwd2
 
@@ -173,7 +191,15 @@ if __name__ == "__main__":
 	if args.directory:
 		os.remove(file)
 
+	oname = "payload.py"
 
+	if args.payload_override:
+		oname = args.payload_override
+		for letter in "/\\<>:\"|?*":
+			if letter in args.fname_override:
+				os.write(2, "Error:: Forbidden character '{}' in the payload name override.\nIgnoring the override.\n".format(letter).encode())
+				oname = "payload.py"
+				break
 
-	with open("payload.py", "w") as o:
+	with open(oname, "w") as o:
 		o.write(script)
