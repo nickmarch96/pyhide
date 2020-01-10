@@ -6,6 +6,7 @@ import random
 import argparse
 import shutil
 import hashlib
+import zipfile
 
 try:
 	from Crypto.Cipher import AES
@@ -181,9 +182,9 @@ if __name__ == "__main__":
 			parser.error("-f FILE argument was used but '{}' is not a file.\nDid you mean -d DIRECTORY?\n".format(args.file))
 
 		if args.compress:
-			file = os.path.basename(os.path.normpath(args.file))
-			shutil.make_archive(file, "zip", args.file)
-			file += ".zip"
+			file = os.path.basename(os.path.normpath(args.file)) + ".zip"
+			with zipfile.ZipFile(file, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+				zf.write(args.file, os.path.basename(args.file))
 		else:
 			file = args.file
 
@@ -192,6 +193,10 @@ if __name__ == "__main__":
 	if args.fname_override:
 		if not filename_check(args.fname_override):
 			args.fname_override = None
+		else:
+			# If compressing or a directory, then make sure the override ends in a .zip
+			if (args.compress or args.directory) and args.fname_override[-4:] != ".zip":
+				args.fname_override = args.fname_override.strip(".") + ".zip"
 
 	# Set password (default None) and delete old mem
 	pwd = args.pwd
