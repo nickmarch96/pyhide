@@ -126,80 +126,107 @@ class PyHide():
 		return raw + (chr(t)*t).encode()
 
 
+def filename_check(s):
+	# Windows forbids consecutive dots
+	if ".." in s:
+		return False
+	# List of bad chars, taken from both linux and Windows
+	for letter in "/\\<>:\"|?*":
+		if letter in s:
+			os.write(2, "Error:: Forbidden character '{}' in the filename override.\nIgnoring the override.\n".format(letter).encode())
+			return False
+	return True
+
+
+
 if __name__ == "__main__":
 
+	# All of the arguments!
 	parser = argparse.ArgumentParser(description="Standalone File Packager with encryption.")
 	group = parser.add_mutually_exclusive_group(required=True)
 	group.add_argument("-f", help="Filename of target", dest="file")
 	group.add_argument("-d", help="Directory of target (Will be compressed)", dest="directory")
-	parser.add_argument("-V", "--version", action="version", version="%(prog)s 2.1")
-	parser.add_argument("-p", help="Password for AES encryption.", dest="pwd")
+	parser.add_argument("-V", "--version", action="version", version="%(prog)s 2.1.1")
+	parser.add_argument("-p", help="Password for AES encryption", dest="pwd")
 	parser.add_argument("-F", help="Filename override (default is input filename)", dest="fname_override")
-	parser.add_argument("-P", help="Payload name override", dest="payload_override")
+	parser.add_argument("-P", help="Payload name override", dest="payload_override", default="payload.py")
+	parser.add_argument("--compress", help="Compress the input file's data", dest="compress", action="store_true")
 	args = parser.parse_args()
+
+	# The compress argument is dependant on the file argument
+	if args.compress and not args.file:
+		parser.error("--compress argument requires the -f argument to be used.\nThe -d argument will always compress the data.")
+
 
 	file = None
 
+	# If dir, check if it exists and is valid, then zip and set file to that
 	if args.directory:
 		if not os.path.exists(args.directory):
-			os.write(2, "'{}' does not exist!\n".format(args.directory).encode())
-			exit()
+			parser.error("'{}' does not exist!\n".format(args.directory))
 
 		if not os.path.isdir(args.directory):
-			os.write(2, "-d DIRECTORY argument was used but '{}' is not a directory.\nDid you mean -f FILE?\n".format(args.directory).encode())
-			exit()
+			parser.error("-d DIRECTORY argument was used but '{}' is not a directory.\nDid you mean -f FILE?\n".format(args.directory))
 
 		file = os.path.basename(os.path.normpath(args.directory))
 		shutil.make_archive(file, "zip", args.directory)
 		file += ".zip"
 
+	# If file, check if it exists and is valid, then set file
 	if args.file:
 		if not os.path.exists(args.file):
-			os.write(2, "'{}' does not exist!\n".format(args.file).encode())
-			exit()
+			parser.error("'{}' does not exist!\n".format(args.file))
 
 		if not os.path.isfile(args.file):
-			os.write(2, "-f FILE argument was used but '{}' is not a file.\nDid you mean -d DIRECTORY?\n".format(args.file).encode())
-			exit()
+			parser.error("-f FILE argument was used but '{}' is not a file.\nDid you mean -d DIRECTORY?\n".format(args.file))
 
-		file = args.file
+		if args.compress:
+			file = os.path.basename(os.path.normpath(args.file))
+			shutil.make_archive(file, "zip", args.file)
+			file += ".zip"
+		else:
+			file = args.file
 
+	# Independant code block
+	# If filename override, the check if its valid to override the filename 
 	if args.fname_override:
-		for letter in "/\\<>:\"|?*":
-			if letter in args.fname_override:
-				os.write(2, "Error:: Forbidden character '{}' in the filename override.\nIgnoring the override.\n".format(letter).encode())
-				args.fname_override = None
-				break
+		if not filename_check(args.fname_override):
+			args.fname_override = None
 
+	# Set password (default None) and delete old mem
 	pwd = args.pwd
 	del args.pwd
 
+	# If password not passed via command line, then grab password
 	if not pwd:
 		pwd = getpass.getpass("Input password: ")
 		pwd2 = getpass.getpass("Confirm password: ")
 
 		if pwd != pwd2:
 			os.write(2, "Passwords do not match.\n".encode())
+			exit()
 
 		del pwd2
 
+	# Set up pyhide's encryption keys
 	e = PyHide(pwd)
 	del pwd
+	# At this step there is no longer any variables with passwords (still in memory)
+	# working on setting up secure deletion of strings, either with np or securestring
 
 	script = e.create(file, args.fname_override)
 
-	if args.directory:
+	# If a zip file was made, then delete it
+	if args.directory or args.compress:
 		os.remove(file)
 
-	oname = "payload.py"
 
+	oname = args.payload_override
+
+	# If payload name override, then check if it contains invalid chars
 	if args.payload_override:
-		oname = args.payload_override
-		for letter in "/\\<>:\"|?*":
-			if letter in args.fname_override:
-				os.write(2, "Error:: Forbidden character '{}' in the payload name override.\nIgnoring the override.\n".format(letter).encode())
-				oname = "payload.py"
-				break
+		if not filename_check(args.payload_override):
+			args.payload_override = "payload.py"
 
 	with open(oname, "w") as o:
 		o.write(script)
