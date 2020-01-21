@@ -6,12 +6,13 @@ import random
 import argparse
 import shutil
 import hashlib
+from time import time
 
 try:
 	from Crypto.Cipher import AES
 	from Crypto.Protocol.KDF import PBKDF2
 except ImportError:
-	os.write(2, "The Crypto library is required to run this script.\nNIX: 'pip (or pip3) install pycrypto'.\nWindows: 'pip install pycryptodome'.\n")
+	os.write(2, "The Crypto library is required to run this script.\nNIX: 'pip (or pip3) install pycrypto'.\nWindows: 'pip install pycryptodome'.\n".encode())
 
 _TEMPLATE = """#! /usr/bin/python3
 import os
@@ -19,12 +20,13 @@ try:
 	from Crypto.Cipher import AES
 	from Crypto.Protocol.KDF import PBKDF2
 except ImportError:
-	print("The Crypto library is required to run this script. NIX: 'pip (or pip3) install pycrypto'. Windows: 'pip install pycryptodome'. ")
+	os.write(2, "The Crypto library is required to run this script. NIX: 'pip (or pip3) install pycrypto'. Windows: 'pip install pycryptodome'.\\n".encode())
 
 import base64
 import getpass
 import hashlib
 import argparse
+from time import time
 
 parser = argparse.ArgumentParser(description="Standalone File Packager payload.")
 parser.add_argument("-p", help="Password for AES encryption.", dest="pwd")
@@ -33,9 +35,11 @@ args = parser.parse_args()
 data = {}
 filename = {}
 
-iv = base64.b85decode({})
-salt = base64.b85decode({})
-itr_len = {}
+iv = [base64.b85decode({}), base64.b85decode({})]
+
+salt = [base64.b85decode({}), base64.b85decode({})]
+
+iter_len = [{}, {}]
 
 checksum = '{}'
 checksum_salt = {}
@@ -47,28 +51,33 @@ if args.pwd:
 else:
 	password = getpass.getpass("Input password: ")
 
-key = PBKDF2(password, salt, AES.block_size, itr_len, None)
+os.write(1, "Decrypting...".encode())
+t1 = time()
+aes_data = AES.new(PBKDF2(password, salt[0], AES.block_size, iter_len[0], None), AES.MODE_CBC, iv[0])
+aes_fname = AES.new(PBKDF2(password, salt[1], AES.block_size, iter_len[1], None), AES.MODE_CBC, iv[1])
+t2 = time()
 del password
-aes = AES.new(key, AES.MODE_CBC, iv)
+os.write(1, "Done. Took {} seconds.\\n".format(round(t2-t1, 3)).encode())
 
-raw = aes.decrypt(base64.b85decode(data))
+
+raw = aes_data.decrypt(base64.b85decode(data))
 raw = raw[:-raw[-1]]
 
-fname = aes.decrypt(base64.b85decode(filename))
+fname = aes_fname.decrypt(base64.b85decode(filename))
 fname = fname[:-fname[-1]]
 
 if not fname:
-	print("File failed to decrypt.")
+	os.write(1, "File failed to decrypt.\\n".encode())
 
 try:
 	fname = fname.decode()
 except:
-	print("File failed to decrypt.")
+	os.write(1, "File failed to decrypt.\\n".encode())
 
 if hashlib.sha512(raw + checksum_salt).hexdigest() == checksum:
-	print("Checksum is verified. File decrypted successfully!")
+	os.write(1, "Checksum is verified. File decrypted successfully!\\n".encode())
 else:
-	print("Checksums do NOT match! File failed to decrypt or was corrupted in transit.")
+	os.write(1, "Checksums do NOT match! File failed to decrypt or was corrupted in transit.\\n".encode())
 	exit()
 
 with open(fname, "wb") as o:
@@ -83,14 +92,26 @@ class PyHide():
 	"""
 
 	def __init__(self, password):
-		self.__IV = os.urandom(AES.block_size)
-		self.__SALT = os.urandom(AES.block_size)
-		self.__C_SALT = os.urandom(AES.block_size)
-		self.__ITR_LEN = random.randint(1000, 10000)
-		self.__KEY = PBKDF2(password, self.__SALT, AES.block_size, self.__ITR_LEN, None)
-		del password
+		self.__DATA_IV = os.urandom(AES.block_size)
+		self.__FNAME_IV = os.urandom(AES.block_size)
 
-		self.aes = AES.new(self.__KEY, AES.MODE_CBC, self.__IV)
+		self.__DATA_SALT = os.urandom(AES.block_size)
+		self.__FNAME_SALT = os.urandom(AES.block_size)
+		self.__CSUM_SALT = os.urandom(AES.block_size)
+
+		self.__DATA_ITR_LEN = random.randint(100000, 200000)
+		self.__FNAME_ITR_LEN = random.randint(100000, 200000)
+
+		os.write(1, "Performing Key Derivation for {} total iterations...".format(self.__DATA_ITR_LEN + self.__FNAME_ITR_LEN).encode())
+		t1 = time()
+		self.__DATA_KEY = PBKDF2(password, self.__DATA_SALT, AES.block_size, self.__DATA_ITR_LEN, None)
+		self.__FNAME_KEY = PBKDF2(password, self.__FNAME_SALT, AES.block_size, self.__FNAME_ITR_LEN, None)
+		t2 = time()
+		del password
+		os.write(1, "Done. Took {} seconds.\n".format(round(t2-t1, 3)).encode())
+
+		self.aes_data = AES.new(self.__DATA_KEY, AES.MODE_CBC, self.__DATA_IV)
+		self.aes_fname = AES.new(self.__FNAME_KEY, AES.MODE_CBC, self.__FNAME_IV)
 
 		self.filename = None
 		self.data = None
@@ -104,20 +125,22 @@ class PyHide():
 		with open(file, "rb") as f:
 			data = f.read()
 
-		checksum = hashlib.sha512(data + self.__C_SALT).hexdigest()
+		checksum = hashlib.sha512(data + self.__CSUM_SALT).hexdigest()
 
 		data = self._pad(data)
-		data = base64.b85encode(self.aes.encrypt(data))
+		data = base64.b85encode(self.aes_data.encrypt(data))
 
 		if filename_override:
 			file = filename_override
 
 		file = os.path.basename(os.path.normpath(file))
 		file = self._pad(file.encode())
-		file = base64.b85encode(self.aes.encrypt(file))
+		file = base64.b85encode(self.aes_fname.encrypt(file))
 
-		script = _TEMPLATE.format(data, file, base64.b85encode(self.__IV), 
-							base64.b85encode(self.__SALT), self.__ITR_LEN, checksum, self.__C_SALT)
+		script = _TEMPLATE.format(data, file,
+							base64.b85encode(self.__DATA_IV), base64.b85encode(self.__FNAME_IV), 
+							base64.b85encode(self.__DATA_SALT), base64.b85encode(self.__FNAME_SALT),
+							self.__DATA_ITR_LEN, self.__FNAME_ITR_LEN, checksum, self.__CSUM_SALT, "{}")
 
 		return script
 
@@ -132,10 +155,10 @@ if __name__ == "__main__":
 	group = parser.add_mutually_exclusive_group(required=True)
 	group.add_argument("-f", help="Filename of target", dest="file")
 	group.add_argument("-d", help="Directory of target (Will be compressed)", dest="directory")
-	parser.add_argument("-V", "--version", action="version", version="%(prog)s 2.1")
 	parser.add_argument("-p", help="Password for AES encryption.", dest="pwd")
 	parser.add_argument("-F", help="Filename override (default is input filename)", dest="fname_override")
 	parser.add_argument("-P", help="Payload name override", dest="payload_override")
+	parser.add_argument("-V", "--version", action="version", version="%(prog)s 2.1")
 	args = parser.parse_args()
 
 	file = None
