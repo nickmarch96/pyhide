@@ -42,7 +42,7 @@ salt = [base64.b85decode({}), base64.b85decode({})]
 iter_len = [{}, {}]
 
 checksum = '{}'
-checksum_salt = {}
+checksum_salt = base64.b85decode({})
 
 password = None
 
@@ -68,17 +68,21 @@ fname = fname[:-fname[-1]]
 
 if not fname:
 	os.write(1, "File failed to decrypt.\\n".encode())
+	exit()
 
 try:
 	fname = fname.decode()
 except:
 	os.write(1, "File failed to decrypt.\\n".encode())
+	exit()
 
 if hashlib.sha512(raw + checksum_salt).hexdigest() == checksum:
 	os.write(1, "Checksum is verified. File decrypted successfully!\\n".encode())
 else:
 	os.write(1, "Checksums do NOT match! File failed to decrypt or was corrupted in transit.\\n".encode())
 	exit()
+
+os.write(1, "{} has successfully extracted to {}.\\n".format(fname, os.getcwd()).encode())
 
 with open(fname, "wb") as o:
     o.write(raw)
@@ -121,6 +125,7 @@ class PyHide():
 			pass
 		else:
 			os.write(2, "{} does not exist!".format(file))
+			return None
 
 		with open(file, "rb") as f:
 			data = f.read()
@@ -140,7 +145,7 @@ class PyHide():
 		script = _TEMPLATE.format(data, file,
 							base64.b85encode(self.__DATA_IV), base64.b85encode(self.__FNAME_IV), 
 							base64.b85encode(self.__DATA_SALT), base64.b85encode(self.__FNAME_SALT),
-							self.__DATA_ITR_LEN, self.__FNAME_ITR_LEN, checksum, self.__CSUM_SALT, "{}")
+							self.__DATA_ITR_LEN, self.__FNAME_ITR_LEN, checksum, base64.b85encode(self.__CSUM_SALT), "{}", "{}", "{}")
 
 		return script
 
@@ -158,10 +163,14 @@ if __name__ == "__main__":
 	parser.add_argument("-p", help="Password for AES encryption.", dest="pwd")
 	parser.add_argument("-F", help="Filename override (default is input filename)", dest="fname_override")
 	parser.add_argument("-P", help="Payload name override", dest="payload_override")
-	parser.add_argument("-V", "--version", action="version", version="%(prog)s 2.1")
+	parser.add_argument("-s", "--secure", help="Secure Storage, delete unencrypted original upon encryption.", action="store_true", dest="secure")
+	parser.add_argument("-V", "--version", action="version", version="%(prog)s 2.2")
 	args = parser.parse_args()
 
 	file = None
+
+	if args.secure:
+		os.write(1, "Secure Storage is set to True. Original file WILL be deleted after encryption.\n".encode())
 
 	if args.directory:
 		if not os.path.exists(args.directory):
@@ -203,6 +212,7 @@ if __name__ == "__main__":
 
 		if pwd != pwd2:
 			os.write(2, "Passwords do not match.\n".encode())
+			exit()
 
 		del pwd2
 
@@ -226,3 +236,13 @@ if __name__ == "__main__":
 
 	with open(oname, "w") as o:
 		o.write(script)
+
+	# Delete original if secure storage
+	if args.secure:
+		if args.file:
+			os.write(1, "Deleting {}...\n".format(file).encode())
+			os.remove(file)
+		elif args.directory:
+			os.write(1, "Deleting {}...\n".format(os.path.normpath(args.directory)).encode())
+			shutil.rmtree(args.directory)
+
