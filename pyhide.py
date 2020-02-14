@@ -8,6 +8,19 @@ import shutil
 import hashlib
 from time import time
 
+
+
+argc_import = False
+
+if "linux" in sys.platform:
+	try:
+		import argcomplete
+		argc_import = True
+	except ImportError:
+		os.write(2, "argcomplete not installed. Would highly recommend it for quality of life improvement.\nInstall: 'pip install argcomplete, activate-global-python-argcomplete --user, restart shell, smile :)'.\n".encode())
+
+
+
 try:
 	from Crypto.Cipher import AES
 	from Crypto.Protocol.KDF import PBKDF2
@@ -157,6 +170,7 @@ class PyHide():
 if __name__ == "__main__":
 
 	parser = argparse.ArgumentParser(description="Standalone File Packager with encryption.")
+	
 	group = parser.add_mutually_exclusive_group(required=True)
 	group.add_argument("-f", help="Filename of target", dest="file")
 	group.add_argument("-d", help="Directory of target (Will be compressed)", dest="directory")
@@ -165,6 +179,8 @@ if __name__ == "__main__":
 	parser.add_argument("-P", help="Payload name override", dest="payload_override")
 	parser.add_argument("-s", "--secure", help="Secure Storage, delete unencrypted original upon encryption.", action="store_true", dest="secure")
 	parser.add_argument("-V", "--version", action="version", version="%(prog)s 2.2")
+	if argc_import:
+		argcomplete.autocomplete(parser)
 	args = parser.parse_args()
 
 	file = None
