@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import sys
 import base64
 import getpass
@@ -11,6 +12,7 @@ from time import time
 
 
 argc_import = False
+VERSION = "2.2"
 
 if "linux" in sys.platform:
 	try:
@@ -18,8 +20,6 @@ if "linux" in sys.platform:
 		argc_import = True
 	except ImportError:
 		os.write(2, "argcomplete not installed. Would highly recommend it for quality of life improvement.\nInstall: 'pip install argcomplete, activate-global-python-argcomplete --user, restart shell, smile :)'.\n".encode())
-
-
 
 try:
 	from Crypto.Cipher import AES
@@ -98,7 +98,7 @@ else:
 os.write(1, "{} has successfully extracted to {}.\\n".format(fname, os.getcwd()).encode())
 
 with open(fname, "wb") as o:
-    o.write(raw)
+    o.write(raw[AES.block_size*4:])
 """
 
 
@@ -115,6 +115,7 @@ class PyHide():
 		self.__DATA_SALT = os.urandom(AES.block_size)
 		self.__FNAME_SALT = os.urandom(AES.block_size)
 		self.__CSUM_SALT = os.urandom(AES.block_size)
+		self.__CSUM_SEED = os.urandom(AES.block_size*4)
 
 		self.__DATA_ITR_LEN = random.randint(100000, 200000)
 		self.__FNAME_ITR_LEN = random.randint(100000, 200000)
@@ -141,7 +142,7 @@ class PyHide():
 			return None
 
 		with open(file, "rb") as f:
-			data = f.read()
+			data = self.__CSUM_SEED + f.read()
 
 		checksum = hashlib.sha512(data + self.__CSUM_SALT).hexdigest()
 
@@ -178,7 +179,7 @@ if __name__ == "__main__":
 	parser.add_argument("-F", help="Filename override (default is input filename)", dest="fname_override")
 	parser.add_argument("-P", help="Payload name override", dest="payload_override")
 	parser.add_argument("-s", "--secure", help="Secure Storage, delete unencrypted original upon encryption.", action="store_true", dest="secure")
-	parser.add_argument("-V", "--version", action="version", version="%(prog)s 2.2")
+	parser.add_argument("-V", "--version", action="version", version="%(prog)s {}".format(VERSION))
 	if argc_import:
 		argcomplete.autocomplete(parser)
 	args = parser.parse_args()
@@ -245,7 +246,7 @@ if __name__ == "__main__":
 	if args.payload_override:
 		oname = args.payload_override
 		for letter in "/\\<>:\"|?*":
-			if letter in args.fname_override:
+			if letter in args.payload_override:
 				os.write(2, "Error:: Forbidden character '{}' in the payload name override.\nIgnoring the override.\n".format(letter).encode())
 				oname = "payload.py"
 				break
